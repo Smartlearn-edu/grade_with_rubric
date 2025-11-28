@@ -117,7 +117,7 @@
           "parameters": [
             {
               "name": "wsfunction",
-              "value": "mod_assign_save_grade"
+              "value": "gradingform_rubric_grader_gradingpanel_store"
             },
             {
               "name": "moodlewsrestformat",
@@ -128,40 +128,28 @@
               "value": "c0a31a9e7a14ca0222e53af59601dd13"
             },
             {
-              "name": "assignmentid",
-              "value": "={{ $json.assignmentid }}"
+              "name": "component",
+              "value": "mod_assign"
             },
             {
-              "name": "userid",
-              "value": "={{ $json.userid }}"
+              "name": "contextid",
+              "value": "={{ $('gradingpanel_fetch').item.json.grade.contextid }}"
             },
             {
-              "name": "grade",
-              "value": "={{ $json.grade }}"
+              "name": "area",
+              "value": "submission"
             },
             {
-              "name": "attemptnumber",
-              "value": "-1"
+              "name": "itemid",
+              "value": "={{ $json.submissionId }}"
             },
             {
-              "name": "addattempt",
-              "value": "0"
+              "name": "gradeduserid",
+              "value": "={{ $json.userId }}"
             },
             {
-              "name": "workflowstate",
-              "value": "graded"
-            },
-            {
-              "name": "applytoall",
-              "value": "1"
-            },
-            {
-              "name": "advancedgradingdata",
-              "value": "={{ JSON.stringify($json.advancedgradingdata) }}"
-            },
-            {
-              "name": "plugindata",
-              "value": "={{ JSON.stringify($json.plugindata) }}"
+              "name": "formdata",
+              "value": "={{ $json.formdata }}"
             }
           ]
         },
@@ -178,7 +166,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get the AI output\nconst aiOutput = items[0].json.output;\nconst originalData = $('Prepare Rubric Prompt').item.json;\n\n// Clean and parse AI response\nlet parsed;\ntry {\n  let cleanOutput = aiOutput.trim().replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleanOutput);\n} catch (error) {\n  throw new Error('Failed to parse AI output: ' + error.message);\n}\n\nconst criteriaGrades = parsed.criteriaGrades || [];\nconst totalScore = parsed.totalScore || 0;\nconst overallFeedback = parsed.overallFeedback || '';\n\n// Build Standard Moodle API Structure for mod_assign_save_grade\nconst criteriaData = criteriaGrades.map(crit => ({\n  criterionid: Number(crit.criterionId),\n  fillings: [{\n    criterionid: Number(crit.criterionId),\n    levelid: Number(crit.selectedLevelId),\n    remark: crit.justification || '',\n    remarkformat: 1 // HTML\n  }]\n}));\n\n// Return data for mod_assign_save_grade\nreturn [{\n  json: {\n    assignmentid: Number(originalData.assignmentId),\n    userid: Number(originalData.userId),\n    grade: Number(totalScore),\n    attemptnumber: -1,\n    addattempt: 0,\n    workflowstate: \"graded\",\n    applytoall: 1,\n    advancedgradingdata: {\n      rubric: {\n        criteria: criteriaData\n      }\n    },\n    plugindata: {\n      assignfeedbackcomments_editor: {\n        text: overallFeedback,\n        format: 1\n      }\n    }\n  }\n}];"
+        "jsCode": "// Get the AI output\nconst aiOutput = items[0].json.output;\nconst originalData = $('Prepare Rubric Prompt').item.json;\n\n// Get real Moodle rubric data from the fetch node\nlet realRubricCriteria = [];\ntry {\n  // Try to find the criteria in the fetch node output\n  // Structure is usually: grade.criteria or just criteria\n  const fetchNodeData = $('gradingpanel_fetch').item.json;\n  if (fetchNodeData.grade && fetchNodeData.grade.criteria) {\n    realRubricCriteria = fetchNodeData.grade.criteria;\n  } else if (fetchNodeData.criteria) {\n    realRubricCriteria = fetchNodeData.criteria;\n  }\n  console.log('Found real Moodle criteria:', realRubricCriteria.length);\n} catch (e) {\n  console.log('Could not fetch real Moodle criteria:', e.message);\n}\n\n// Clean and parse AI response\nlet parsed;\ntry {\n  let cleanOutput = aiOutput.trim().replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleanOutput);\n} catch (error) {\n  throw new Error('Failed to parse AI output: ' + error.message);\n}\n\nconst criteriaGrades = parsed.criteriaGrades || [];\nconst totalScore = parsed.totalScore || 0;\nconst overallFeedback = parsed.overallFeedback || '';\n\n// Build formdata in URL-encoded format for gradingpanel_store\nconst formdataParts = [];\n\ncriteriaGrades.forEach(function(crit, index) {\n  let criterionId = crit.criterionId;\n  let levelId = crit.selectedLevelId;\n  const remark = encodeURIComponent(crit.justification || '');\n  \n  // SMART MAPPING: Map to real Moodle IDs if available\n  if (realRubricCriteria.length > 0) {\n    // 1. Find matching criterion (assume same order/index)\n    let realCrit = null;\n    if (index < realRubricCriteria.length) {\n       realCrit = realRubricCriteria[index];\n    }\n    \n    if (realCrit) {\n      // Use the REAL criterion ID\n      criterionId = realCrit.id;\n      \n      // 2. Find matching level by SCORE\n      // The AI returns a levelId, but we should verify it or find the real one by score\n      const aiScore = crit.score;\n      // Find level with closest score\n      const matchingLevel = realCrit.levels.find(l => Math.abs(parseFloat(l.score) - parseFloat(aiScore)) < 0.1);\n      \n      if (matchingLevel) {\n        levelId = matchingLevel.id;\n      } else {\n        // Fallback: try to match by ID if score match fails\n        const levelById = realCrit.levels.find(l => l.id == levelId);\n        if (!levelById && realCrit.levels.length > 0) {\n             // Emergency fallback: use the first level or closest score?\n             // Let's stick to original levelId if no score match, but it might fail.\n        }\n      }\n    }\n  }\n  \n  // Construct URL-encoded parameter\n  formdataParts.push('advancedgrading[criteria][' + criterionId + '][levelid]=' + levelId);\n  formdataParts.push('advancedgrading[criteria][' + criterionId + '][remark]=' + remark);\n});\n\nconst formdata = formdataParts.join('&');\n\n// Return data\nreturn [{\n  json: {\n    submissionId: Number(originalData.submissionId),\n    userId: Number(originalData.userId),\n    formdata: formdata,\n    \n    // Keep for reference\n    assignmentId: originalData.assignmentId,\n    cmid: originalData.cmid,\n    grade: totalScore,\n    feedback: overallFeedback,\n    debug: {\n      criteriaCount: criteriaGrades.length,\n      realCriteriaFound: realRubricCriteria.length,\n      formdataSample: formdata.substring(0, 100) + '...'\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
