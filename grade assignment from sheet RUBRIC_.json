@@ -136,10 +136,6 @@
               "value": "={{ $('HTTP Request').item.json.modules[0].contextid }}"
             },
             {
-              "name": "area",
-              "value": "submissions"
-            },
-            {
               "name": "itemid",
               "value": "={{ $json.submissionId }}"
             },
