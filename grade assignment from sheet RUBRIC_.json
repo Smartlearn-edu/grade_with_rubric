@@ -1,0 +1,442 @@
+{
+  "name": "grade assignment from sheet RUBRIC*",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1360,
+        -1616
+      ],
+      "id": "ce9f76dc-aed6-4eb6-bbb1-780ca7d2f6c0",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1yq4-REXxEbZmgT7HUd8w5MS8AjQ3L3GOpQylJsnlcT8",
+          "mode": "list",
+          "cachedResultName": "submissions",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1yq4-REXxEbZmgT7HUd8w5MS8AjQ3L3GOpQylJsnlcT8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1yq4-REXxEbZmgT7HUd8w5MS8AjQ3L3GOpQylJsnlcT8/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1120,
+        -1616
+      ],
+      "id": "3ca8e529-1e8a-46c8-94f1-fde6a79c851e",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Ll71p2dsiT3JLP8R",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -912,
+        -1616
+      ],
+      "id": "cd488599-5be9-4f97-bf80-49adb15a2d59",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=assignment question:{{ $('Loop Over Items').item.json.instructions }}\nstudent's submission: {{ $('Loop Over Items').item.json.submissionText }}\nRubric details :{{ $('Loop Over Items').item.json.rubricDefinition }}",
+        "options": {
+          "systemMessage": "You are an expert academic grader with years of experience in evaluating student work fairly and constructively.\n\nYour task is to:\n1. Carefully read the assignment question and understand what is being asked\n2. Thoroughly review the student's submission\n3. Evaluate the submission against each criterion in the provided rubric\n4. Select the most appropriate performance level for each criterion based on the student's work\n5. Provide clear, specific justifications for each grade\n6. Calculate the total score accurately\n7. Write constructive overall feedback that highlights strengths and areas for improvement\n\nGuidelines:\n- Be fair and objective in your evaluation\n- Base your decisions solely on the rubric criteria provided\n- Give students the benefit of the doubt when their work falls between two levels\n- Provide specific examples from their submission in your justifications\n- Keep feedback constructive and encouraging while being honest about performance\n- Ensure your justifications clearly explain why you selected each performance level\n- Double-check that your total score matches the sum of individual criterion scores\nassignment question:{{ $('Loop Over Items').item.json.instructions }}\nstudent's submission: {{ $('Loop Over Items').item.json.submissionText }}\nRubric details :{{ $('Loop Over Items').item.json.rubricDefinition }}\nAlways respond in valid JSON format as \n{\n  \"criteriaGrades\": [\n    {\n      \"criterionId\": 5,\n      \"criterionName\": \"html___def\",\n      \"selectedLevelId\": 14,\n      \"score\": 35,\n      \"justification\": \"…\"\n    },\n    {\n      \"criterionId\": 6,\n      \"criterionName\": \"html___using\",\n      \"selectedLevelId\": 18,\n      \"score\": 50,\n      \"justification\": \"…\"\n    }\n  ],\n  \"totalScore\": 85,\n  \"overallFeedback\": \"…\"\n}\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -48,
+        -1600
+      ],
+      "id": "4aa3054f-6a68-4a0c-9407-2665afdce223",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -1424
+      ],
+      "id": "8752814f-e063-4bef-b07d-0aa1509911a6",
+      "name": "G1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "hqB9Pwt4QnucEtMt",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract basic assignment and submission data\nconst assignmentQuestion = $input.item.json.instructions || '';\nconst maxGrade = $input.item.json.maxGrade || 0;\nconst studentSubmission = $input.item.json.submissionText || '';\nconst rubricDefinitionRaw = $input.item.json.rubricDefinition || '';\n\n// Debug: Log what we received\nconsole.log('Input data:', {\n  instructions: $input.item.json.instructions,\n  maxGrade: $input.item.json.maxGrade,\n  submissionText: $input.item.json.submissionText,\n  rubricDefinition: $input.item.json.rubricDefinition ? 'EXISTS' : 'MISSING'\n});\n\n// Parse the rubric definition\nlet rubricData = null;\nlet parsedCriteria = [];\n\ntry {\n  if (rubricDefinitionRaw) {\n    rubricData = JSON.parse(rubricDefinitionRaw);\n    \n    // Extract and format criteria for AI\n    if (rubricData.criteria && Array.isArray(rubricData.criteria)) {\n      parsedCriteria = rubricData.criteria.map(criterion => {\n        const levels = criterion.levels.map(level => ({\n          definition: level.definition,\n          score: level.score,\n          id: level.id\n        }));\n        \n        return {\n          id: criterion.id,\n          name: criterion.name,\n          levels: levels,\n          maxScore: Math.max(...levels.map(l => l.score))\n        };\n      });\n    }\n  }\n} catch (error) {\n  throw new Error(`Failed to parse rubric definition: ${error.message}`);\n}\n\n// Calculate total possible score from rubric\nconst totalPossibleScore = parsedCriteria.reduce((sum, criterion) => {\n  return sum + criterion.maxScore;\n}, 0);\n\n// Format rubric as readable text for AI\nconst rubricFormatted = parsedCriteria.map(criterion => {\n  const levelsText = criterion.levels\n    .sort((a, b) => b.score - a.score) // Sort by score descending\n    .map(level => `  - ${level.definition} (${level.score} points)`)\n    .join('\\n');\n  \n  return `${criterion.name} (Max: ${criterion.maxScore} points):\\n${levelsText}`;\n}).join('\\n\\n');\n\n// Create AI prompt\nconst aiPrompt = `You are an expert grader. Grade the following student submission using the provided rubric.\n\nASSIGNMENT QUESTION:\n${assignmentQuestion}\n\nSTUDENT SUBMISSION:\n${studentSubmission}\n\nGRADING RUBRIC (Total Possible: ${totalPossibleScore} points):\n${rubricFormatted}\n\nINSTRUCTIONS:\n1. Evaluate the student's submission against each criterion in the rubric\n2. For each criterion, select the most appropriate level and provide justification\n3. Calculate the total score\n4. Provide constructive feedback\n\nPlease respond in the following JSON format:\n{\n  \"criteriaGrades\": [\n    {\n      \"criterionId\": <id>,\n      \"criterionName\": \"<name>\",\n      \"selectedLevelId\": <level_id>,\n      \"score\": <score>,\n      \"justification\": \"<your justification>\"\n    }\n  ],\n  \"totalScore\": <sum of all scores>,\n  \"overallFeedback\": \"<constructive feedback for student>\"\n}`;\n\n// Return formatted data for next node\nreturn {\n  json: {\n    // Original data\n    assignmentName: $input.item.json.assignmentName,\n    submissionId: $input.item.json.submissionId,\n    userId: $input.item.json.userId,\n    assignmentId: $input.item.json.assignmentId,\n    cmid: $input.item.json.cmid,\n    instructions: assignmentQuestion,  // Added this explicitly\n    \n    // Extracted data\n    assignmentQuestion: assignmentQuestion,\n    maxGrade: maxGrade,\n    studentSubmission: studentSubmission,\n    \n    // Rubric data\n    rubricCriteria: parsedCriteria,\n    totalPossibleScore: totalPossibleScore,\n    rubricFormatted: rubricFormatted,\n    \n    // AI prompt ready to use\n    aiPrompt: aiPrompt,\n    \n    // Original rubric for reference\n    originalRubric: rubricData\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        -1600
+      ],
+      "id": "c410ff7e-09b6-4f2c-a5a5-05a60410ee87",
+      "name": "Prepare Rubric Prompt",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lms.mohammadnabil.site/webservice/rest/server.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wsfunction",
+              "value": "gradingform_rubric_grader_gradingpanel_store"
+            },
+            {
+              "name": "moodlewsrestformat",
+              "value": "json"
+            },
+            {
+              "name": "wstoken",
+              "value": "c0a31a9e7a14ca0222e53af59601dd13"
+            },
+            {
+              "name": "component",
+              "value": "mod_assign"
+            },
+            {
+              "name": "contextid",
+              "value": "={{ $('HTTP Request').item.json.modules[0].contextid }}"
+            },
+            {
+              "name": "area",
+              "value": "submission"
+            },
+            {
+              "name": "itemid",
+              "value": "44"
+            },
+            {
+              "name": "formdata",
+              "value": "=cr5[rating]=14&cr6[rating]=18&criteriacount=2"
+            },
+            {
+              "name": "gradeduserid",
+              "value": "={{ $json.userId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        304,
+        -1200
+      ],
+      "id": "1067b5ed-ed62-45b2-8def-6eb042656c48",
+      "name": "saverubric"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the AI output\nconst aiOutput = items[0].json.output;\n\n// Get original data\nconst originalData = $('Prepare Rubric Prompt').item.json;\n\n// Get contextid from the HTTP request that fetched it\nconst contextData = $('HTTP Request').item.json; // Change to your actual node name\nconst contextid = contextData.contextid;\n\n// Clean and parse the AI response\nlet parsed;\ntry {\n  let cleanOutput = aiOutput.trim();\n  cleanOutput = cleanOutput.replace(/```json\\n?/g, '');\n  cleanOutput = cleanOutput.replace(/```\\n?/g, '');\n  cleanOutput = cleanOutput.trim();\n  \n  parsed = JSON.parse(cleanOutput);\n} catch (error) {\n  console.error('Failed to parse AI output:', error);\n  return [{\n    json: {\n      error: 'Failed to parse AI response',\n      rawOutput: aiOutput\n    }\n  }];\n}\n\n// Extract data\nconst criteriaGrades = parsed.criteriaGrades || [];\nconst totalScore = parsed.totalScore || 0;\nconst overallFeedback = parsed.overallFeedback || '';\n\n// Build formdata for rubric\nconst formData = {\n  criteria: {}\n};\n\n// Add each criterion with selected level\ncriteriaGrades.forEach((crit) => {\n  formData.criteria[`criterion_${crit.criterionId}`] = {\n    levelid: crit.selectedLevelId,\n    remark: crit.justification || ''\n  };\n});\n\n// Return data for API\nreturn [{\n  json: {\n    assignmentId: originalData.assignmentId,\n    userId: originalData.userId,\n    cmid: originalData.cmid,\n    contextid: contextid,  // ← Added this!\n    grade: totalScore,\n    feedback: overallFeedback,\n    formdata: JSON.stringify(formData)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        -1600
+      ],
+      "id": "23dc7c3d-2531-4932-8b00-c5132cad2592",
+      "name": "get grade and feedback"
+    },
+    {
+      "parameters": {
+        "url": "https://lms.mohammadnabil.site/webservice/rest/server.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wsfunction",
+              "value": "core_course_get_contents"
+            },
+            {
+              "name": "moodlewsrestformat",
+              "value": "json"
+            },
+            {
+              "name": "wstoken",
+              "value": "c0a31a9e7a14ca0222e53af59601dd13"
+            },
+            {
+              "name": "courseid",
+              "value": "={{ $('Get row(s) in sheet').item.json.courseid }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -320,
+        -1600
+      ],
+      "id": "22cfd75b-783d-4e41-80ca-b778f0d08821",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "url": "https://lms.mohammadnabil.site/webservice/rest/server.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wsfunction",
+              "value": "mod_assign_get_submission_status"
+            },
+            {
+              "name": "moodlewsrestformat",
+              "value": "json"
+            },
+            {
+              "name": "wstoken",
+              "value": "c0a31a9e7a14ca0222e53af59601dd13"
+            },
+            {
+              "name": "assignid",
+              "value": "={{ $json.assignmentId }}"
+            },
+            {
+              "name": "userid",
+              "value": "={{ $json.userId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -624,
+        -1248
+      ],
+      "id": "b23e7b44-a3cf-4de6-9ce0-d8256b591e44",
+      "name": "get_grade_itemid"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lms.mohammadnabil.site/webservice/rest/server.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "wsfunction",
+              "value": "gradingform_rubric_grader_gradingpanel_fetch"
+            },
+            {
+              "name": "moodlewsrestformat",
+              "value": "json"
+            },
+            {
+              "name": "wstoken",
+              "value": "c0a31a9e7a14ca0222e53af59601dd13"
+            },
+            {
+              "name": "itemid",
+              "value": "={{ $('Get row(s) in sheet').item.json.submissionId }}"
+            },
+            {
+              "name": "gradeduserid",
+              "value": "={{ $('Get row(s) in sheet').item.json.userId }}"
+            },
+            {
+              "name": "component",
+              "value": "mod_assign"
+            },
+            {
+              "name": "area",
+              "value": "submission"
+            },
+            {
+              "name": "contextid",
+              "value": "={{ $json.modules[4].contextid }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -160,
+        -1248
+      ],
+      "id": "999a378a-0a8b-493f-b9f0-5c179b5b1e2b",
+      "name": "gradingpanel_fetch"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Prepare Rubric Prompt",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "get_grade_itemid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "get grade and feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "G1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Rubric Prompt": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "saverubric": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get grade and feedback": {
+      "main": [
+        [
+          {
+            "node": "saverubric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "gradingpanel_fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_grade_itemid": {
+      "main": [
+        [
+          {
+            "node": "gradingpanel_fetch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a7010d91-f39e-4894-acd7-e87008f93e82",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b253211a774e1082a8da3af3f8503fe5f5b71a128946778f1d9f44b46cdd105"
+  },
+  "id": "njHTAw2TUjwLgdD2",
+  "tags": []
+}
