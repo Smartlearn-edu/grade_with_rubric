@@ -133,7 +133,7 @@
             },
             {
               "name": "contextid",
-              "value": "={{ $('HTTP Request').item.json.modules[0].contextid }}"
+              "value": "={{ $json.contextid }}"
             },
             {
               "name": "area",
@@ -141,11 +141,11 @@
             },
             {
               "name": "itemid",
-              "value": "44"
+              "value": "={{ $json.submissionId }}"
             },
             {
               "name": "formdata",
-              "value": "=cr5[rating]=14&cr6[rating]=18&criteriacount=2"
+              "value": "={{ $json.formdata }}"
             },
             {
               "name": "gradeduserid",
@@ -166,7 +166,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get the AI output\nconst aiOutput = items[0].json.output;\n\n// Get original data\nconst originalData = $('Prepare Rubric Prompt').item.json;\n\n// Get contextid from the HTTP request that fetched it\nconst contextData = $('HTTP Request').item.json; // Change to your actual node name\nconst contextid = contextData.contextid;\n\n// Clean and parse the AI response\nlet parsed;\ntry {\n  let cleanOutput = aiOutput.trim();\n  cleanOutput = cleanOutput.replace(/```json\\n?/g, '');\n  cleanOutput = cleanOutput.replace(/```\\n?/g, '');\n  cleanOutput = cleanOutput.trim();\n  \n  parsed = JSON.parse(cleanOutput);\n} catch (error) {\n  console.error('Failed to parse AI output:', error);\n  return [{\n    json: {\n      error: 'Failed to parse AI response',\n      rawOutput: aiOutput\n    }\n  }];\n}\n\n// Extract data\nconst criteriaGrades = parsed.criteriaGrades || [];\nconst totalScore = parsed.totalScore || 0;\nconst overallFeedback = parsed.overallFeedback || '';\n\n// Build formdata for rubric\nconst formData = {\n  criteria: {}\n};\n\n// Add each criterion with selected level\ncriteriaGrades.forEach((crit) => {\n  formData.criteria[`criterion_${crit.criterionId}`] = {\n    levelid: crit.selectedLevelId,\n    remark: crit.justification || ''\n  };\n});\n\n// Return data for API\nreturn [{\n  json: {\n    assignmentId: originalData.assignmentId,\n    userId: originalData.userId,\n    cmid: originalData.cmid,\n    contextid: contextid,  // ← Added this!\n    grade: totalScore,\n    feedback: overallFeedback,\n    formdata: JSON.stringify(formData)\n  }\n}];"
+        "jsCode": "// Get the AI output\nconst aiOutput = items[0].json.output;\n\n// Get original data\nconst originalData = $('Prepare Rubric Prompt').item.json;\n\n// Get contextid from gradingpanel_fetch which already has it\nconst fetchData = $('gradingpanel_fetch').item.json;\nconst contextid = fetchData.grade?.contextid || fetchData.contextid;\n\n// Get submissionId from original data\nconst submissionId = originalData.submissionId;\n\n// Clean and parse the AI response\nlet parsed;\ntry {\n  let cleanOutput = aiOutput.trim();\n  cleanOutput = cleanOutput.replace(/```json\\n?/g, '');\n  cleanOutput = cleanOutput.replace(/```\\n?/g, '');\n  cleanOutput = cleanOutput.trim();\n  \n  parsed = JSON.parse(cleanOutput);\n} catch (error) {\n  console.error('Failed to parse AI output:', error);\n  throw new Error(`Failed to parse AI response: ${error.message}`);\n}\n\n// Extract data\nconst criteriaGrades = parsed.criteriaGrades || [];\nconst totalScore = parsed.totalScore || 0;\nconst overallFeedback = parsed.overallFeedback || '';\n\n// Build formdata in URL-encoded format that Moodle expects\nconst formdataParts = [];\n\ncriteriaGrades.forEach((crit) => {\n  const criterionId = crit.criterionId;\n  const levelId = crit.selectedLevelId;\n  const remark = encodeURIComponent(crit.justification || '');\n  \n  formdataParts.push(`advancedgrading[criteria][${criterionId}][levelid]=${levelId}`);\n  formdataParts.push(`advancedgrading[criteria][${criterionId}][remark]=${remark}`);\n});\n\nconst formdata = formdataParts.join('&');\n\n// Return data for API\nreturn [{\n  json: {\n    assignmentId: originalData.assignmentId,\n    userId: originalData.userId,\n    cmid: originalData.cmid,\n    contextid: contextid,\n    submissionId: submissionId,\n    grade: totalScore,\n    feedback: overallFeedback,\n    formdata: formdata,\n    // Debug info\n    debug: {\n      criteriaCount: criteriaGrades.length,\n      criteriaGrades: criteriaGrades\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
